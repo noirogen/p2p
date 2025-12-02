@@ -1,6 +1,7 @@
 import time
 import threading
 import random
+from bitfield import Bitfield
 from itertools import groupby  # added for tie breaking
 from logger import log_preferred_neighbors, log_optimistic_neighbor
 
@@ -183,6 +184,18 @@ class PeerManager:
         with self.lock:
             self.peer_bitfields[peer_id] = bitfield
             self._check_for_termination()
+            
+    def check_still_interested(self, bitfield):
+        with self.lock:
+            for peer_id, handler in self.connections.items():
+                peer_bitfield = self.peer_bitfields[peer_id]
+                if not (bitfield.has_interesting_pieces(peer_bitfield)):
+                    handler.send_not_interested()
+                    handler.am_interested_in_them = False
+                else:
+                    # might not be necessary but just in case
+                    handler.am_interested_in_them = True
+            
 
     # Checks if all peers (from the original PeerInfo.cfg)
     # have the complete file. If so, triggers shutdown.

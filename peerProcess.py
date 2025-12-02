@@ -21,7 +21,7 @@ from peer_manager import PeerManager
 # Also, you can set LOCAL_TESTING_PEER_FILE and LOCAL_TESTING_PEER_INFO_FILE, which will be used depending
 # on the LOCAL_TESTING flag.
 
-LOCAL_TESTING = True
+LOCAL_TESTING = False
 
 LOCAL_TESTING_PEER_FILE = "HelloWorldCommon.cfg"
 LOCAL_TESTING_PEER_INFO_FILE = "HelloWorldPeerInfo.cfg"
@@ -206,10 +206,16 @@ class ConnectionHandler(threading.Thread):
             self.peer_manager.update_peer_bitfield(
                 self.other_peer_id, self.their_bitfield
             )
-            if not self.am_interested_in_them:
-                if self.file_manager.check_interest(self.their_bitfield):
-                    self.am_interested_in_them = True
-                    self.send_interested()
+            
+            am_i_now_interested = self.file_manager.check_interest(self.their_bitfield)
+            
+            if not self.am_interested_in_them and am_i_now_interested:
+                self.am_interested_in_them = True
+                self.send_interested()
+            elif self.am_interested_in_them and not am_i_now_interested:
+                print(f"[{self.my_peer_id}] No longer interested in {self.other_peer_id} after HAVE.")
+                self.am_interested_in_them = False
+                self.send_not_interested()
         elif msg.msg_type == Message.REQUEST:
             piece_index = msg.parse_request_payload()
             if not self.am_choking_them:
@@ -230,6 +236,9 @@ class ConnectionHandler(threading.Thread):
                 self.peer_manager.update_peer_bitfield(
                     self.my_peer_id, self.file_manager.bitfield
                 )
+                
+                # check bitfields of all neighbors
+                self.peer_manager.check_still_interested(self.file_manager.bitfield)
 
                 if self.file_manager.is_complete():
                     log_download_complete(self.my_peer_id)
@@ -277,6 +286,9 @@ class ConnectionHandler(threading.Thread):
 
     def send_interested(self):
         self.conn_socket.sendall(Message.create_interested_message().to_bytes())
+        
+    def send_not_interested(self):
+        self.conn_socket.sendall(Message.create_not_interested_message().to_bytes())
 
 
 def start_server(my_peer_id, my_port, peer_manager, file_manager):
